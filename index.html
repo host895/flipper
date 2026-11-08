@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gallery</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#000;min-height:100%}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding:12px}
+  .grid img{width:100%;aspect-ratio:1/1;object-fit:cover;display:block;cursor:zoom-in;background:#111;border-radius:6px}
+
+  #lb{position:fixed;inset:0;background:#000;display:none;z-index:10;overflow:hidden;touch-action:none}
+  #lb.open{display:block}
+  #stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  #big{max-width:100%;max-height:100%;transform-origin:center center;user-select:none;-webkit-user-drag:none;cursor:grab;will-change:transform}
+  #big.drag{cursor:grabbing}
+  .bar{position:absolute;top:max(12px,env(safe-area-inset-top));right:12px;display:flex;gap:10px;z-index:2}
+  .btn{width:44px;height:44px;border-radius:50%;border:1px solid #333;background:rgba(30,30,30,.85);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;font-size:24px;line-height:1}
+  .btn:hover{background:#2a2a2a}
+  .btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .btn svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+
+<div class="grid" id="grid"></div>
+
+<div id="lb">
+  <div class="bar">
+    <button class="btn" id="zin" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="btn" id="zout" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+    <a class="btn" id="dl" download aria-label="Download"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg></a>
+    <button class="btn" id="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div id="stage"><img id="big" alt="" draggable="false"></div>
+</div>
+
+<script>
+const files = [1,2,3,4,5].map(n => `image/${n}.png`);
+const grid = document.getElementById('grid');
+files.forEach(src => {
+  const i = new Image();
+  i.src = src; i.alt = ''; i.loading = 'lazy';
+  i.onclick = () => openLb(src);
+  grid.appendChild(i);
+});
+
+const lb = document.getElementById('lb'), big = document.getElementById('big'),
+      dl = document.getElementById('dl'), stage = document.getElementById('stage');
+let scale = 1, x = 0, y = 0, idx = 0;
+
+function apply(){ big.style.transform = `translate(${x}px,${y}px) scale(${scale})`; }
+function reset(){ scale = 1; x = y = 0; apply(); }
+function zoom(f){
+  scale = Math.min(8, Math.max(1, scale * f));
+  if (scale === 1) { x = y = 0; }
+  apply();
+}
+function openLb(src){
+  idx = files.indexOf(src);
+  big.src = src; dl.href = src; dl.setAttribute('download', src.split('/').pop());
+  reset(); lb.classList.add('open'); document.body.style.overflow = 'hidden';
+}
+function closeLb(){ lb.classList.remove('open'); document.body.style.overflow = ''; }
+function step(d){ openLb(files[(idx + d + files.length) % files.length]); }
+
+document.getElementById('zin').onclick = () => zoom(1.4);
+document.getElementById('zout').onclick = () => zoom(1/1.4);
+document.getElementById('close').onclick = closeLb;
+stage.addEventListener('click', e => { if (e.target === stage) closeLb(); });
+big.addEventListener('dblclick', () => scale > 1 ? reset() : zoom(2.5));
+
+lb.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 1/1.15); }, {passive:false});
+
+document.addEventListener('keydown', e => {
+  if (!lb.classList.contains('open')) return;
+  if (e.key === 'Escape') closeLb();
+  else if (e.key === '+' || e.key === '=') zoom(1.4);
+  else if (e.key === '-') zoom(1/1.4);
+  else if (e.key === 'ArrowRight') step(1);
+  else if (e.key === 'ArrowLeft') step(-1);
+});
+
+// drag (pan) + pinch zoom
+const pts = new Map(); let lastDist = 0, sx = 0, sy = 0;
+big.addEventListener('pointerdown', e => {
+  big.setPointerCapture(e.pointerId); pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  sx = e.clientX; sy = e.clientY; big.classList.add('drag');
+  if (pts.size === 2) { const [a,b] = [...pts.values()]; lastDist = Math.hypot(a.x-b.x, a.y-b.y); }
+});
+big.addEventListener('pointermove', e => {
+  if (!pts.has(e.pointerId)) return;
+  pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (pts.size === 2) {
+    const [a,b] = [...pts.values()], d = Math.hypot(a.x-b.x, a.y-b.y);
+    if (lastDist) zoom(d / lastDist);
+    lastDist = d;
+  } else if (scale > 1) {
+    x += e.clientX - sx; y += e.clientY - sy; apply();
+  }
+  sx = e.clientX; sy = e.clientY;
+});
+const up = e => { pts.delete(e.pointerId); lastDist = 0; if (!pts.size) big.classList.remove('drag'); };
+big.addEventListener('pointerup', up);
+big.addEventListener('pointercancel', up);
+</script>
+</body>
+</html>
